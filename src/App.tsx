@@ -22,6 +22,15 @@ import { Toaster, toast } from 'react-hot-toast';
 import { cn } from './lib/utils';
 
 // Types
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 type AspectRatio = '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
 type Style = 'Realistic' | 'Anime' | '3D' | 'Cyberpunk' | 'Oil Painting' | 'Sketch';
 
@@ -45,11 +54,22 @@ export default function App() {
       return;
     }
 
+    const apiKey = process.env.GEMINI_API_KEY;
+    
+    // Check if API key is missing or still the placeholder
+    if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+      toast.error('API Key not found. Please select an API key.');
+      if (window.aistudio) {
+        await window.aistudio.openSelectKey();
+      }
+      return;
+    }
+
     setIsGenerating(true);
     const loadingToast = toast.loading('Igniting the creative spark...');
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       
       const fullPrompt = `${prompt}${style !== 'Realistic' ? `, in ${style} style` : ''}`;
       
@@ -87,7 +107,16 @@ export default function App() {
       }
     } catch (error: any) {
       console.error('Generation Error:', error);
-      toast.error(error.message || 'Failed to generate image. Please try again.', { id: loadingToast });
+      
+      // Handle invalid API key error specifically
+      if (error.message?.includes('API key not valid') || error.status === 'INVALID_ARGUMENT') {
+        toast.error('Invalid API Key. Please select a valid key.', { id: loadingToast });
+        if (window.aistudio) {
+          await window.aistudio.openSelectKey();
+        }
+      } else {
+        toast.error(error.message || 'Failed to generate image. Please try again.', { id: loadingToast });
+      }
     } finally {
       setIsGenerating(false);
     }
